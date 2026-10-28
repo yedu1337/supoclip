@@ -59,6 +59,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { ClipTile, ClipFocus, ProcessingPanel, EmptyState } from "@/components/app/clip-wall";
+import { PostingKit } from "@/components/app/posting-kit";
 import { intlLocale } from "@/i18n/config";
 import { timeAgo } from "@/lib/generations";
 import { VIDEO_SOURCE_LABELS, VideoSourceIcon, videoSourceKind, type VideoSourceKind } from "@/components/video-source-icon";
@@ -858,10 +859,13 @@ export default function TaskPage() {
         ) : null}
       >
         {focusedClip && (
-          <ClipPostList
-            posts={socialPosts.filter((post) => post.clip_id === focusedClip.id)}
-            onChanged={loadSocialPosts}
-          />
+          <div className="space-y-4">
+            <PostingKit taskId={task?.id ?? String(params.id)} clipId={focusedClip.id} />
+            <ClipPostList
+              posts={socialPosts.filter((post) => post.clip_id === focusedClip.id)}
+              onChanged={loadSocialPosts}
+            />
+          </div>
         )}
       </ClipFocus>
 

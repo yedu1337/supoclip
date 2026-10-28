@@ -25,11 +25,13 @@ from ...utils.async_helpers import run_in_thread
 from ...repositories.generation_allowance_guard import generation_allowance_guard, GenerationAllowanceBusy
 from ...repositories.task_run_guard import task_run_guard, TaskRunBusy
 from ...repositories.task_repository import TaskRepository
+from ...repositories.clip_repository import ClipRepository
 from ...database import get_db
 from ...database import AsyncSessionLocal
 from ...services.task_service import TaskService
 from ...services.video_service import VideoService
 from ...services.billing_service import BillingService, BillingLimitExceeded
+from ...services.posting_kit import generate_posting_kit
 from ...auth_headers import resolve_authenticated_user_id
 from ...workers.job_queue import JobQueue
 from ...workers.progress import ProgressTracker
@@ -1107,6 +1109,67 @@ async def regenerate_clip(
         logger.error(f"Error regenerating clip: {e}")
         raise HTTPException(
             status_code=500, detail=f"Error regenerating clip: {str(e)}"
+        )
+
+
+@router.post("/{task_id}/clips/{clip_id}/posting-kit")
+async def create_clip_posting_kit(
+    task_id: str, clip_id: str, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Generate titles, captions, hashtags and posting tips for one clip."""
+    try:
+        task_service = TaskService(db)
+        task = await _require_task_owner(request, task_service, db, task_id)
+        clip = await ClipRepository.get_clip_by_id(db, clip_id)
+        if not clip or clip["task_id"] != task_id:
+            raise HTTPException(status_code=404, detail="Clip not found")
+
+        runtime_config = get_config()
+        redis_client = redis.Redis(
+            host=runtime_config.redis_host,
+            port=runtime_config.redis_port,
+            password=runtime_config.redis_password,
+            decode_responses=True,
+        )
+        cache_key = f"posting_kit:{clip_id}"
+        refresh = request.query_params.get("refresh", "").lower() in {"1", "true", "yes"}
+        try:
+            try:
+                cached = None if refresh else await redis_client.get(cache_key)
+            except Exception as exc:
+                logger.warning("Unable to read posting-kit cache for %s: %s", clip_id, exc)
+                cached = None
+            if cached:
+                try:
+                    return {"posting_kit": json.loads(cached)}
+                except json.JSONDecodeError:
+                    pass
+
+            kit = await generate_posting_kit(
+                clip_text=clip.get("text") or "",
+                source_title=task.get("source_title") or "",
+                source_platform=task.get("source_type") or "",
+                clip_duration=float(clip.get("duration") or 0.0),
+                hook_title=clip.get("hook_title") or "",
+            )
+
+            try:
+                await redis_client.set(cache_key, json.dumps(kit), ex=60 * 60 * 24 * 30)
+            except Exception as exc:
+                logger.warning("Unable to cache posting kit for %s: %s", clip_id, exc)
+
+            return {"posting_kit": kit}
+        finally:
+            await redis_client.aclose()
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"Posting kit generation unavailable for clip {clip_id}: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating posting kit: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating posting kit: {str(e)}"
         )
 
 
