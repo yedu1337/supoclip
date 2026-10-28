@@ -83,7 +83,7 @@ async def _preflight_youtube_source(url: str, duration_limit: int) -> Dict[str, 
                 "code": "VIDEO_METADATA_TIMEOUT",
                 "message": (
                     "Checking this YouTube video's length timed out. Please try again "
-                    "shortly or upload the video file. No minutes were used."
+                    "shortly or upload the video file."
                 ),
             },
         ) from None
@@ -94,7 +94,7 @@ async def _preflight_youtube_source(url: str, duration_limit: int) -> Dict[str, 
                 "code": "VIDEO_METADATA_UNAVAILABLE",
                 "message": (
                     "We couldn't verify this video's length. Please try again shortly "
-                    "or upload the video file. No minutes were used."
+                    "or upload the video file."
                 ),
             },
         ) from None
@@ -105,9 +105,9 @@ async def _preflight_youtube_source(url: str, duration_limit: int) -> Dict[str, 
             detail={
                 "code": "VIDEO_TOO_LONG",
                 "message": (
-                    f"This video is {duration / 60:.1f} minutes long. Your plan allows "
+                    f"This video is {duration / 60:.1f} minutes long. Your instance allows "
                     f"YouTube videos up to {duration_limit / 60:g} minutes. "
-                    "Choose a shorter video. No minutes were used."
+                    "Choose a shorter video or raise MAX_VIDEO_DURATION in your .env."
                 ),
                 "duration_seconds": duration,
                 "max_duration_seconds": duration_limit,
@@ -130,9 +130,9 @@ async def _preflight_stream_source(url: str, source: str, duration_limit: int) -
     except StreamSourceError as exc:
         raise HTTPException(status_code=422, detail={"code": "VIDEO_UNAVAILABLE", "message": str(exc)}) from None
     except Exception:
-        raise HTTPException(status_code=503, detail={"code": "VIDEO_METADATA_UNAVAILABLE", "message": "We couldn't fetch this video, try again later. No minutes were used."}) from None
+        raise HTTPException(status_code=503, detail={"code": "VIDEO_METADATA_UNAVAILABLE", "message": "We couldn't fetch this video, try again later."}) from None
     if duration > duration_limit:
-        raise HTTPException(status_code=422, detail={"code": "VIDEO_TOO_LONG", "message": f"This {source.title()} video is {duration / 60:.1f} minutes long. Your plan allows videos up to {duration_limit / 60:g} minutes. Choose a shorter VOD or clip. No minutes were used.", "duration_seconds": duration, "max_duration_seconds": duration_limit})
+        raise HTTPException(status_code=422, detail={"code": "VIDEO_TOO_LONG", "message": f"This {source.title()} video is {duration / 60:.1f} minutes long. Your instance allows videos up to {duration_limit / 60:g} minutes. Raise MAX_VIDEO_DURATION in your .env for longer videos.", "duration_seconds": duration, "max_duration_seconds": duration_limit})
     return metadata
 
 
@@ -162,7 +162,7 @@ async def _preflight_upload_source(url: str, user_id: str, duration_limit: int) 
                 "code": "VIDEO_METADATA_UNAVAILABLE",
                 "message": (
                     "We couldn't read this video's length. Check that the file is a "
-                    "playable video and upload it again. No minutes were used."
+                    "playable video and upload it again."
                 ),
             },
         ) from None
@@ -174,7 +174,8 @@ async def _preflight_upload_source(url: str, user_id: str, duration_limit: int) 
                 "code": "VIDEO_TOO_LONG",
                 "message": (
                     f"This video is {duration / 60:.1f} minutes long. Uploads can be "
-                    f"up to {duration_limit / 60:g} minutes. No minutes were used."
+                    f"up to {duration_limit / 60:g} minutes. Raise MAX_VIDEO_DURATION "
+                    "in your .env for longer uploads."
                 ),
                 "duration_seconds": duration,
                 "max_duration_seconds": duration_limit,
