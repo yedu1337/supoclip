@@ -292,6 +292,8 @@ services:
       args:
         BACKEND_CPU_ONLY: ${BACKEND_CPU_ONLY:-false}
     container_name: supoclip-worker
+    # Offload Whisper transcription to the NVIDIA GPU when the host has one.
+    gpus: all
     # Same platform override as the backend service.
     platform: "${BACKEND_PLATFORM:-linux/amd64}"
     command: [".venv/bin/arq", "src.workers.tasks.WorkerSettings"]
@@ -301,10 +303,14 @@ services:
       - clips:/app/clips
       - ./backend/fonts:/app/fonts
       - ./backend/transitions:/app/transitions
+      - model_cache:/root/.cache
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
       - SUPOCLIP_SERVICE=worker
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-auto}
+      # CUDA runtime libs from the pip nvidia wheels (present only in the cuda build).
+      - LD_LIBRARY_PATH=/app/.venv/lib/python3.11/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.11/site-packages/nvidia/cudnn/lib
       - POSTHOG_PROJECT_TOKEN=${POSTHOG_PROJECT_TOKEN:-}
       - POSTHOG_HOST=${POSTHOG_HOST:-https://eu.i.posthog.com}
       - DATABASE_URL=postgresql+asyncpg://supoclip:supoclip_password@postgres:5432/supoclip
@@ -526,6 +532,8 @@ volumes:
   mcp_downloads:
     driver: local
   vector_data:
+    driver: local
+  model_cache:
     driver: local
 
 networks:

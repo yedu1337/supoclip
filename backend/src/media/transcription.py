@@ -9,6 +9,7 @@ import assemblyai as aai
 from ..config import get_config
 import httpx
 import json
+import os
 import re
 import time
 from .common import (
@@ -186,22 +187,102 @@ def _get_whisper_model(model_name: str = "base"):
     return _WHISPER_MODEL_CACHE[model_name]
 
 
+def _resolve_whisper_device() -> str:
+    """Pick the transcription device: explicit env or auto-detect CUDA."""
+    requested = os.getenv("WHISPER_DEVICE", "auto").strip().lower()
+    if requested in {"cuda", "gpu"}:
+        return "cuda"
+    if requested == "cpu":
+        return "cpu"
+    try:
+        import ctranslate2
+
+        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
+    except Exception:
+        return "cpu"
+
+
+_FASTER_WHISPER_MODEL_CACHE: Dict[str, Any] = {}
+
+
+def _get_faster_whisper_model(model_name: str, device: str) -> Any:
+    """Load and cache a faster-whisper model by name and device."""
+    from faster_whisper import WhisperModel
+
+    cache_key = (model_name, device)
+    if cache_key not in _FASTER_WHISPER_MODEL_CACHE:
+        compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "").strip() or (
+            "float16" if device == "cuda" else "int8"
+        )
+        logger.info(
+            "Loading faster-whisper model: %s (device=%s, compute=%s)",
+            model_name,
+            device,
+            compute_type,
+        )
+        _FASTER_WHISPER_MODEL_CACHE[cache_key] = WhisperModel(
+            model_name, device=device, compute_type=compute_type
+        )
+    return _FASTER_WHISPER_MODEL_CACHE[cache_key]
+
+
+def _transcribe_with_faster_whisper(
+    audio_path: Path, model_name: str, language: Optional[str], device: str
+) -> Dict[str, Any]:
+    """Transcribe with the faster-whisper engine, mirroring openai-whisper's result shape."""
+    model = _get_faster_whisper_model(model_name, device)
+    segments_iter, info = model.transcribe(str(audio_path), word_timestamps=True, language=language)
+    segments: List[Dict[str, Any]] = []
+    text_parts: List[str] = []
+    for segment in segments_iter:
+        words = [
+            {
+                "word": word.word,
+                "start": word.start,
+                "end": word.end,
+                "probability": word.probability,
+            }
+            for word in segment.words or []
+        ]
+        segments.append(
+            {"start": segment.start, "end": segment.end, "text": segment.text, "words": words}
+        )
+        text_parts.append(segment.text)
+    return {
+        "text": "".join(text_parts),
+        "segments": segments,
+        "language": getattr(info, "language", None),
+    }
+
+
 def transcribe_with_whisper(
     video_path: Path, model_name: str = "base", language: Optional[str] = None
 ) -> Dict[str, Any]:
     """Transcribe video using local Whisper with word-level timestamps.
 
-    ``language`` None lets Whisper detect it; AssemblyAI-style codes such as
-    ``en_us`` are reduced to the ISO 639-1 base Whisper expects.
+    Prefers the GPU/CPU-optimized faster-whisper engine and falls back to
+    openai-whisper when faster-whisper is unavailable. ``language`` None lets
+    Whisper detect it; AssemblyAI-style codes such as ``en_us`` are reduced to
+    the ISO 639-1 base Whisper expects.
     """
     audio_path = _prepare_audio_for_transcription(video_path)
-    model = _get_whisper_model(model_name)
     whisper_language = language.split("_", 1)[0] if language else None
+    device = _resolve_whisper_device()
     logger.info(
-        "Starting Whisper transcription with model: %s (language: %s)",
+        "Starting Whisper transcription with model: %s (language: %s, device: %s)",
         model_name,
         whisper_language or "auto",
+        device,
     )
+    try:
+        return _transcribe_with_faster_whisper(audio_path, model_name, whisper_language, device)
+    except Exception as exc:
+        logger.warning(
+            "faster-whisper transcription on %s failed (%s); retrying with openai-whisper",
+            device,
+            exc,
+        )
+    model = _get_whisper_model(model_name)
     return model.transcribe(str(audio_path), word_timestamps=True, language=whisper_language)
 
 

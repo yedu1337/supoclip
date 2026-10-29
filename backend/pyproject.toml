@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.121.0",
     "uvicorn>=0.27.0",
     "openai-whisper>=20250625",
+    "faster-whisper>=1.2.0",
     "pydantic-ai>=1.107.4,<2",
     "setuptools-rust>=1.11.1",
     "asyncpg>=0.29.0",
@@ -36,7 +37,13 @@ dependencies = [
 
 [project.optional-dependencies]
 cpu = ["torch==2.11.0"]
-cuda = ["torch==2.11.0"]
+cuda = [
+    "torch==2.11.0",
+    # ctranslate2 (faster-whisper engine) links against CUDA 12 cuBLAS/cuDNN,
+    # while PyPI torch 2.11 bundles CUDA 13 libs — install both variants.
+    "nvidia-cublas-cu12>=12,<13",
+    "nvidia-cudnn-cu12>=9,<10",
+]
 
 [dependency-groups]
 dev = [
