@@ -32,6 +32,19 @@ SupoClip is an open-source, AI-powered video clipping tool. Give it a long video
 
 **See it first:** [watch real clips SupoClip generated](https://www.supoclip.com/demo) from a long-form interview, or follow the [self-hosting tutorial](https://www.supoclip.com/blog/self-host-supoclip-docker) to run it on your own machine.
 
+## About This Fork
+
+This is @yedu1337's self-host edition of [SupoClip](https://github.com/FujiwaraChoki/supoclip) by **@FujiwaraChoki**. All credit for the core pipeline, the idea, and the design goes to him — this fork only exists to share local customizations back under the same AGPL-3.0 license.
+
+Changes in this fork (AGPL-3.0 §5a notice):
+
+- **GPU-accelerated transcription** — faster-whisper (CTranslate2) engine with automatic CUDA detection, fp16 on GPU / int8 on CPU, and fallbacks to CPU or original openai-whisper (`WHISPER_DEVICE=auto`)
+- **Per-clip AI posting kit** — titles, captions, hashtags, pinned comment, and posting tips generated per clip via `POST /tasks/{task_id}/clips/{clip_id}/posting-kit`, with Google-Search grounding and an offline fallback (`POSTING_KIT_MODEL`)
+- **Self-host-friendly limits** — up to 24 h video length, 20 clips per task, raised queue timeout and daily upload cap, all via `.env`
+- **Wording cleanup** — plan/minutes billing messages replaced with instance-oriented copy
+
+For the latest upstream features, sync from `upstream` and rebase.
+
 ## Ways to Use SupoClip
 
 | Option | Details |
